@@ -7,4 +7,11 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <color name="lavender">#E6E6FA</color>
+    <color name="pink">#FFC0CB</color>
+    <color name="disabled_grey">#D3D3D3</color>
+    <color name="disabled_text">#A9A9A9</color>
+    <color name="text_light">#F5F5F5</color>
+    <color name="input_border">#808080</color>
 </resources>
