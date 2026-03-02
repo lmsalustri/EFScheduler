@@ -44,15 +44,12 @@ class SchedulerViewModel : ViewModel() {
     var selectedTimestamp by mutableStateOf<Long?>(null)
         private set
 
-    // List edit mode (top‑right Edit / Done button)
     var isListEditMode by mutableStateOf(false)
         private set
 
-    // Task pending deletion confirmation
     var taskToDelete: TaskItem? by mutableStateOf(null)
         private set
 
-    // ID of the task being edited (if any)
     private var editingTaskId: String? by mutableStateOf(null)
 
     val isNextEnabled: Boolean
@@ -66,7 +63,7 @@ class SchedulerViewModel : ViewModel() {
         editingTaskId = task.id
         startEditing(task.name)
         selectedTimestamp = task.timestamp
-        isListEditMode = false          // exit list edit mode when entering edit flow
+        isListEditMode = false
     }
 
     fun confirmDeleteTask(task: TaskItem) {
@@ -118,7 +115,6 @@ class SchedulerViewModel : ViewModel() {
     fun addCurrentRunToTasks() {
         currentRun.startTimestamp?.let { timestamp ->
             if (currentRun.taskName.isNotBlank()) {
-                // If we are editing an existing task, remove the old one first
                 editingTaskId?.let { id ->
                     _tasks.removeAll { it.id == id }
                     editingTaskId = null
@@ -139,7 +135,6 @@ class SchedulerViewModel : ViewModel() {
         taskNameInput = ""
         selectedTimestamp = null
         editingTaskId = null
-        // Keep isListEditMode as is – user may still want to edit/delete after finishing
     }
 
     fun cancelEditing() {
@@ -158,7 +153,6 @@ class SchedulerViewModel : ViewModel() {
     fun formatDateTime(context: Context, timestamp: Long): String {
         val calendar = Calendar.getInstance().apply { timeInMillis = timestamp }
 
-        // Strip time for day comparison
         val today = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)

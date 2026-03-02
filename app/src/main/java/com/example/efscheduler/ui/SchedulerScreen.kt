@@ -1,6 +1,5 @@
 package com.example.efscheduler.ui
 
-// Wheel picker imports
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -37,12 +37,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -215,7 +215,6 @@ fun TaskListScreen(
             .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Top row with title and Edit/Done button
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -223,12 +222,19 @@ fun TaskListScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Your Tasks",
-                style = MaterialTheme.typography.headlineMedium,
-            )
-            TextButton(onClick = { viewModel.toggleListEditMode() }) {
-                Text(if (isListEditMode) "Done" else "Edit")
+            if (tasks.isNotEmpty()) {
+                OutlinedButton(
+                    onClick = { viewModel.toggleListEditMode() },
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Lavender
+                    ),
+                    border = BorderStroke(1.dp, Lavender)
+                ) {
+                    Text(
+                        text = if (isListEditMode) "Done" else "Edit",
+                        color = Lavender
+                    )
+                }
             }
         }
 
@@ -238,6 +244,12 @@ fun TaskListScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             item {
+                Text(
+                    text = "Your Tasks",
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
                 Text(
                     text = "Tap the button below to add a new task.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -265,7 +277,8 @@ fun TaskListScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
+                                .padding(16.dp)
+                                .defaultMinSize(minHeight = 48.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
@@ -275,7 +288,6 @@ fun TaskListScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             if (isListEditMode) {
-                                // Edit mode: show time then edit & delete icons
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = viewModel.formatDateTime(context, task.timestamp),
@@ -305,7 +317,6 @@ fun TaskListScreen(
                                     }
                                 }
                             } else {
-                                // Normal mode: just the time
                                 Text(
                                     text = viewModel.formatDateTime(context, task.timestamp),
                                     style = MaterialTheme.typography.bodyMedium
@@ -321,20 +332,40 @@ fun TaskListScreen(
         if (taskToDelete != null) {
             AlertDialog(
                 onDismissRequest = { viewModel.cancelDelete() },
-                title = { Text("Delete Task") },
-                text = { Text("Are you sure you want to delete \"${taskToDelete?.name}\"?") },
+                title = {
+                    Text(
+                        text = "Delete Task",
+                        color = Lavender
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Are you sure you want to delete \"${taskToDelete?.name}\"?",
+                        color = TextLight
+                    )
+                },
                 confirmButton = {
                     TextButton(
                         onClick = { viewModel.deleteConfirmed() }
                     ) {
-                        Text("Delete")
+                        Text(
+                            text = "Delete",
+                            color = Pink
+                        )
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { viewModel.cancelDelete() }) {
-                        Text("Cancel")
+                    TextButton(
+                        onClick = { viewModel.cancelDelete() }
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            color = Lavender
+                        )
                     }
-                }
+                },
+                containerColor = Black,
+                tonalElevation = 0.dp
             )
         }
 
@@ -479,7 +510,7 @@ fun EnterTaskScreen(
     }
 }
 
-// ==================== Pick Time Screen (with past dates disabled) ====================
+// ==================== Pick Time Screen ====================
 @Composable
 fun PickTimeScreen(
     navController: NavController,
@@ -530,10 +561,9 @@ fun PickTimeScreen(
                 )
                 Spacer(modifier = Modifier.height(40.dp))
 
-                // Wheel picker with past times disabled
                 WheelDateTimePicker(
                     startDateTime = initialDateTime,
-                    minDateTime = minDateTime,               // ← current moment
+                    minDateTime = minDateTime,
                     timeFormat = TimeFormat.AM_PM,
                     size = DpSize(320.dp, 180.dp),
                     rowCount = 5,
