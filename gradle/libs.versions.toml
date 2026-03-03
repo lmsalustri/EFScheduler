@@ -13,7 +13,8 @@ uiGraphics = "1.10.4"
 navigationCompose = "2.9.7"
 lifecycleViewModelCompose = "2.10.0"
 wheel-picker-compose = "1.1.11"
-material3 = "1.4.0"   # Check latest version on GitHub
+material3 = "1.4.0"
+roomCompiler = "2.8.4"   # Check latest version on GitHub
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -37,6 +38,8 @@ androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "l
 wheel-picker-compose = { module = "com.github.commandiron:WheelPickerCompose", version.ref = "wheel-picker-compose" }
 androidx-compose-material-icons-core = { module = "androidx.compose.material:material-icons-core" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "roomCompiler" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

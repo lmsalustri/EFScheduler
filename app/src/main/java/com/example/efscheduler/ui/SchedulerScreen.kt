@@ -1,5 +1,6 @@
 package com.example.efscheduler.ui
 
+import android.app.Application
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -65,6 +66,7 @@ import com.commandiron.wheel_picker_compose.core.TimeFormat
 import com.commandiron.wheel_picker_compose.core.WheelPickerDefaults
 import com.example.efscheduler.R
 import com.example.efscheduler.models.SchedulerViewModel
+import com.example.efscheduler.models.ViewModelFactory
 import com.example.efscheduler.ui.theme.Black
 import com.example.efscheduler.ui.theme.DisabledGrey
 import com.example.efscheduler.ui.theme.DisabledText
@@ -158,7 +160,11 @@ fun StepProgressIndicator(
 @Composable
 fun SchedulerApp() {
     val navController = rememberNavController()
-    val viewModel: SchedulerViewModel = viewModel()
+    val context = LocalContext.current
+    val application = context.applicationContext as Application
+    val viewModel: SchedulerViewModel = viewModel(
+        factory = ViewModelFactory(application)
+    )
 
     NavHost(
         navController = navController,
@@ -257,6 +263,7 @@ fun TaskListScreen(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
+            // Inside TaskListScreen, replace the items block:
             if (tasks.isEmpty()) {
                 item {
                     Text(
@@ -267,7 +274,10 @@ fun TaskListScreen(
                     )
                 }
             } else {
-                items(tasks) { task ->
+                items(
+                    items = tasks,
+                    key = { task -> task.id }
+                ) { task ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         colors = CardDefaults.cardColors(

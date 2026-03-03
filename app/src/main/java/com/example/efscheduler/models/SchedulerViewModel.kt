@@ -1,5 +1,6 @@
 package com.example.efscheduler.models
 
+import android.app.Application
 import android.content.Context
 import android.text.format.DateFormat
 import androidx.compose.runtime.getValue
@@ -7,6 +8,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import com.example.efscheduler.models.notification.NotificationHelper
+import com.example.efscheduler.models.notification.NotificationScheduler
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -25,7 +28,9 @@ data class TaskItem(
     val timestamp: Long
 )
 
-class SchedulerViewModel : ViewModel() {
+class SchedulerViewModel(
+    private val application: Application
+) : ViewModel() {
 
     private val _tasks = mutableStateListOf<TaskItem>()
 
@@ -55,6 +60,15 @@ class SchedulerViewModel : ViewModel() {
     val isNextEnabled: Boolean
         get() = taskNameInput.trim().length >= 2
 
+    init {
+        // Create notification channel once at startup
+        NotificationHelper.createNotificationChannel(application)
+    }
+
+    // Helper to get application context when needed
+    private val context: Context
+        get() = application.applicationContext
+
     fun toggleListEditMode() {
         isListEditMode = !isListEditMode
     }
@@ -71,8 +85,15 @@ class SchedulerViewModel : ViewModel() {
     }
 
     fun deleteConfirmed() {
-        taskToDelete?.let { _tasks.remove(it) }
-        taskToDelete = null
+        taskToDelete?.let { task ->
+            // Cancel its notification before deleting
+            NotificationScheduler.cancelTaskNotification(context, task)
+            _tasks.remove(task)
+            taskToDelete = null
+        }
+        if (_tasks.isEmpty()) {
+            isListEditMode = false
+        }
     }
 
     fun cancelDelete() {
@@ -115,16 +136,22 @@ class SchedulerViewModel : ViewModel() {
     fun addCurrentRunToTasks() {
         currentRun.startTimestamp?.let { timestamp ->
             if (currentRun.taskName.isNotBlank()) {
+                // If editing, cancel old task's notification and remove it
                 editingTaskId?.let { id ->
+                    _tasks.find { it.id == id }?.let { oldTask ->
+                        NotificationScheduler.cancelTaskNotification(context, oldTask)
+                    }
                     _tasks.removeAll { it.id == id }
                     editingTaskId = null
                 }
-                _tasks.add(
-                    TaskItem(
-                        name = currentRun.taskName,
-                        timestamp = timestamp
-                    )
+                // Create and add the new/updated task
+                val newTask = TaskItem(
+                    name = currentRun.taskName,
+                    timestamp = timestamp
                 )
+                _tasks.add(newTask)
+                // Schedule its notification
+                NotificationScheduler.scheduleTaskNotification(context, newTask)
             }
         }
     }
@@ -148,7 +175,6 @@ class SchedulerViewModel : ViewModel() {
 
     /**
      * Formats a timestamp into a user-friendly string based on how far away it is.
-     * Examples: "Today at 3:30 PM", "Tomorrow at 10:00 AM", "Monday at 2:00 PM", "Jan 1 at 9:00 AM"
      */
     fun formatDateTime(context: Context, timestamp: Long): String {
         val calendar = Calendar.getInstance().apply { timeInMillis = timestamp }

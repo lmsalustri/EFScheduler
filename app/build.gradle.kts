@@ -5,11 +5,7 @@ plugins {
 
 android {
     namespace = "com.example.efscheduler"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.efscheduler"
@@ -55,6 +51,7 @@ dependencies {
     implementation(libs.wheel.picker.compose)
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
