@@ -33,6 +33,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -44,6 +45,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -169,8 +172,6 @@ fun SchedulerApp() {
     NavHost(
         navController = navController,
         startDestination = Screen.TaskList.route,
-
-        // remove the white crossfade that compose uses by default
         enterTransition = { fadeIn(animationSpec = tween(0)) },
         exitTransition = { fadeOut(animationSpec = tween(0)) }
     ) {
@@ -209,7 +210,7 @@ fun TaskListScreen(
     navController: NavController,
     viewModel: SchedulerViewModel
 ) {
-    val tasks = viewModel.tasks
+    val tasks by viewModel.tasks.collectAsState()
     val context = LocalContext.current
     val isListEditMode by viewModel::isListEditMode
     val taskToDelete by viewModel::taskToDelete
@@ -228,7 +229,7 @@ fun TaskListScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (tasks.isNotEmpty()) {
+            if (tasks != null && tasks!!.isNotEmpty()) {
                 OutlinedButton(
                     onClick = { viewModel.toggleListEditMode() },
                     colors = ButtonDefaults.outlinedButtonColors(
@@ -244,93 +245,104 @@ fun TaskListScreen(
             }
         }
 
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            item {
-                Text(
-                    text = "Your Tasks",
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                Text(
-                    text = "Tap the button below to add a new task.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
+        if (tasks == null) {
+            // Loading state
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = Lavender)
             }
-            // Inside TaskListScreen, replace the items block:
-            if (tasks.isEmpty()) {
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 item {
                     Text(
-                        text = "No tasks yet",
-                        style = MaterialTheme.typography.bodyMedium.copy(color = DisabledText),
+                        text = "Your Tasks",
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 8.dp)
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    Text(
+                        text = "Tap the button below to add a new task.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
                 }
-            } else {
-                items(
-                    items = tasks,
-                    key = { task -> task.id }
-                ) { task ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = TextLight.copy(alpha = 0.1f)
+                if (tasks!!.isEmpty()) {
+                    item {
+                        Text(
+                            text = "No tasks yet",
+                            style = MaterialTheme.typography.bodyMedium.copy(color = DisabledText),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 8.dp)
                         )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                                .defaultMinSize(minHeight = 48.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = task.name,
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f)
+                    }
+                } else {
+                    items(
+                        items = tasks!!,
+                        key = { task -> task.id }
+                    ) { task ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = TextLight.copy(alpha = 0.1f)
                             )
-                            if (isListEditMode) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                                    .defaultMinSize(minHeight = 48.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = task.name,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isListEditMode) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = viewModel.formatDateTime(context, task.timestamp),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.padding(end = 8.dp)
+                                        )
+                                        IconButton(
+                                            onClick = {
+                                                viewModel.startEditingTask(task)
+                                                navController.navigate(Screen.EnterTask.passTaskName(task.name))
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = "Edit",
+                                                tint = Lavender
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { viewModel.confirmDeleteTask(task) }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Delete",
+                                                tint = Pink
+                                            )
+                                        }
+                                    }
+                                } else {
                                     Text(
                                         text = viewModel.formatDateTime(context, task.timestamp),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.padding(end = 8.dp)
+                                        style = MaterialTheme.typography.bodyMedium
                                     )
-                                    IconButton(
-                                        onClick = {
-                                            viewModel.startEditingTask(task)
-                                            navController.navigate(Screen.EnterTask.passTaskName(task.name))
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Edit,
-                                            contentDescription = "Edit",
-                                            tint = Lavender
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = { viewModel.confirmDeleteTask(task) }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Delete",
-                                            tint = Pink
-                                        )
-                                    }
                                 }
-                            } else {
-                                Text(
-                                    text = viewModel.formatDateTime(context, task.timestamp),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
                             }
                         }
                     }

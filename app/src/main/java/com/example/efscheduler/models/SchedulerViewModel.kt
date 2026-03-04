@@ -4,12 +4,15 @@ import android.app.Application
 import android.content.Context
 import android.text.format.DateFormat
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.efscheduler.models.notification.NotificationHelper
-import com.example.efscheduler.models.notification.NotificationScheduler
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -29,13 +32,14 @@ data class TaskItem(
 )
 
 class SchedulerViewModel(
-    private val application: Application
+    application: Application
 ) : ViewModel() {
 
-    private val _tasks = mutableStateListOf<TaskItem>()
+    private val repository = TaskRepository(application)
 
-    val tasks: List<TaskItem>
-        get() = _tasks.sortedBy { it.timestamp }
+    // Expose tasks as StateFlow (for Compose)
+    private val _tasks = MutableStateFlow<List<TaskItem>?>(null)
+    val tasks: StateFlow<List<TaskItem>?> = _tasks.asStateFlow()
 
     var isEditing by mutableStateOf(false)
         private set
@@ -61,13 +65,16 @@ class SchedulerViewModel(
         get() = taskNameInput.trim().length >= 2
 
     init {
-        // Create notification channel once at startup
+        // Create notification channel
         NotificationHelper.createNotificationChannel(application)
-    }
 
-    // Helper to get application context when needed
-    private val context: Context
-        get() = application.applicationContext
+        // Collect tasks from repository
+        viewModelScope.launch {
+            repository.tasksFlow.collect { taskList ->
+                _tasks.value = taskList.sortedBy { it.timestamp }
+            }
+        }
+    }
 
     fun toggleListEditMode() {
         isListEditMode = !isListEditMode
@@ -86,12 +93,12 @@ class SchedulerViewModel(
 
     fun deleteConfirmed() {
         taskToDelete?.let { task ->
-            // Cancel its notification before deleting
-            NotificationScheduler.cancelTaskNotification(context, task)
-            _tasks.remove(task)
-            taskToDelete = null
+            viewModelScope.launch {
+                repository.deleteTask(task)
+                taskToDelete = null
+            }
         }
-        if (_tasks.isEmpty()) {
+        if (_tasks.value?.isEmpty() == true) {  // safe call
             isListEditMode = false
         }
     }
@@ -136,22 +143,15 @@ class SchedulerViewModel(
     fun addCurrentRunToTasks() {
         currentRun.startTimestamp?.let { timestamp ->
             if (currentRun.taskName.isNotBlank()) {
-                // If editing, cancel old task's notification and remove it
-                editingTaskId?.let { id ->
-                    _tasks.find { it.id == id }?.let { oldTask ->
-                        NotificationScheduler.cancelTaskNotification(context, oldTask)
-                    }
-                    _tasks.removeAll { it.id == id }
+                viewModelScope.launch {
+                    val newTask = TaskItem(
+                        name = currentRun.taskName,
+                        timestamp = timestamp
+                    )
+                    // If editing, pass the old task id so its notification is canceled
+                    repository.addTask(newTask, editingTaskId)
                     editingTaskId = null
                 }
-                // Create and add the new/updated task
-                val newTask = TaskItem(
-                    name = currentRun.taskName,
-                    timestamp = timestamp
-                )
-                _tasks.add(newTask)
-                // Schedule its notification
-                NotificationScheduler.scheduleTaskNotification(context, newTask)
             }
         }
     }
@@ -173,9 +173,6 @@ class SchedulerViewModel(
         editingTaskId = null
     }
 
-    /**
-     * Formats a timestamp into a user-friendly string based on how far away it is.
-     */
     fun formatDateTime(context: Context, timestamp: Long): String {
         val calendar = Calendar.getInstance().apply { timeInMillis = timestamp }
 
@@ -203,12 +200,8 @@ class SchedulerViewModel(
         val dayString = when (daysDifference) {
             0 -> "Today"
             1 -> "Tomorrow"
-            in 2..7 -> {
-                SimpleDateFormat("EEEE", Locale.getDefault()).format(Date(timestamp))
-            }
-            else -> {
-                SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(timestamp))
-            }
+            in 2..7 -> SimpleDateFormat("EEEE", Locale.getDefault()).format(Date(timestamp))
+            else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(timestamp))
         }
         return "$dayString at $timeString"
     }
