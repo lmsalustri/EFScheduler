@@ -17,38 +17,36 @@ class TaskRepository(private val context: Context) {
 
     // Add a new task (or update existing) – cancel old notification if editing
     suspend fun addTask(task: TaskItem, oldTaskId: String? = null) {
-        // If editing, cancel old notification
         oldTaskId?.let { id ->
             taskDao.getAllTasks().collect { entities ->
                 entities.find { it.id == id }?.let { oldEntity ->
                     NotificationScheduler.cancelTaskNotification(
                         context,
-                        TaskItem(oldEntity.id, oldEntity.name, oldEntity.timestamp)
+                        TaskItem(oldEntity.id, oldEntity.name, oldEntity.timestamp, oldEntity.reminderMinutes)
                     )
+                    // Also cancel reminder if exists
+                    if (oldEntity.reminderMinutes > 0) {
+                        NotificationScheduler.cancelReminderNotification(
+                            context,
+                            TaskItem(oldEntity.id, oldEntity.name, oldEntity.timestamp, oldEntity.reminderMinutes)
+                        )
+                    }
                 }
             }
         }
-        // Insert new/updated task
-        taskDao.insertTask(TaskEntity(task.id, task.name, task.timestamp))
-        // Schedule its notification
+        taskDao.insertTask(TaskEntity(task.id, task.name, task.timestamp, task.reminderMinutes))
         NotificationScheduler.scheduleTaskNotification(context, task)
-    }
-
-    // Delete a task and cancel its notification
-    suspend fun deleteTask(task: TaskItem) {
-        NotificationScheduler.cancelTaskNotification(context, task)
-        taskDao.deleteTask(TaskEntity(task.id, task.name, task.timestamp))
-    }
-
-    // For use in BootReceiver – reschedule all tasks
-    /*
-    suspend fun rescheduleAllNotifications() {
-        taskDao.getAllTasks().collect { entities ->
-            entities.forEach { entity ->
-                val task = TaskItem(entity.id, entity.name, entity.timestamp)
-                NotificationScheduler.scheduleTaskNotification(context, task)
-            }
+        if (task.reminderMinutes > 0) {
+            NotificationScheduler.scheduleReminderNotification(context, task)
         }
     }
-     */
+
+    suspend fun deleteTask(task: TaskItem) {
+        NotificationScheduler.cancelTaskNotification(context, task)
+        if (task.reminderMinutes > 0) {
+            NotificationScheduler.cancelReminderNotification(context, task)
+        }
+        taskDao.deleteTask(TaskEntity(task.id, task.name, task.timestamp, task.reminderMinutes))
+    }
+
 }

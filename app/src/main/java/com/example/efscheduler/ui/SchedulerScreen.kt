@@ -91,6 +91,7 @@ sealed class Screen(val route: String) {
     object PickTime : Screen("pickTime?taskName={taskName}") {
         fun passTaskName(taskName: String) = "pickTime?taskName=$taskName"
     }
+    object Reminder : Screen("reminder")
     object Confirm : Screen("confirm")
 }
 
@@ -136,7 +137,7 @@ fun ScreenHeader(
 fun StepProgressIndicator(
     modifier: Modifier = Modifier,
     currentStep: Int,
-    totalSteps: Int = 3,
+    totalSteps: Int = 4, // Updated to 4 steps now (Task name, Time, Reminder, Confirm)
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -198,6 +199,9 @@ fun SchedulerApp() {
         ) {
             PickTimeScreen(navController, viewModel)
         }
+        composable(Screen.Reminder.route) {
+            ReminderScreen(navController, viewModel)
+        }
         composable(Screen.Confirm.route) {
             ConfirmationScreen(navController, viewModel)
         }
@@ -205,6 +209,7 @@ fun SchedulerApp() {
 }
 
 // ==================== Task List Screen ====================
+// (unchanged – same as before)
 @Composable
 fun TaskListScreen(
     navController: NavController,
@@ -246,7 +251,6 @@ fun TaskListScreen(
         }
 
         if (tasks == null) {
-            // Loading state
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -350,7 +354,6 @@ fun TaskListScreen(
             }
         }
 
-        // Delete confirmation dialog
         if (taskToDelete != null) {
             AlertDialog(
                 onDismissRequest = { viewModel.cancelDelete() },
@@ -524,6 +527,7 @@ fun EnterTaskScreen(
 
             StepProgressIndicator(
                 currentStep = 1,
+                totalSteps = 4,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 16.dp)
@@ -632,7 +636,7 @@ fun PickTimeScreen(
             Button(
                 onClick = {
                     viewModel.confirmDateTime()
-                    navController.navigate(Screen.Confirm.route)
+                    navController.navigate(Screen.Reminder.route)
                 },
                 enabled = isNextEnabled,
                 modifier = Modifier
@@ -657,6 +661,125 @@ fun PickTimeScreen(
 
             StepProgressIndicator(
                 currentStep = 2,
+                totalSteps = 4,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp)
+            )
+        }
+    }
+}
+
+// ==================== Reminder Screen ====================
+@Composable
+fun ReminderScreen(
+    navController: NavController,
+    viewModel: SchedulerViewModel
+) {
+    val selectedReminder by viewModel::selectedReminder
+
+    // Reminder options with display text
+    val reminderOptions = listOf(
+        0 to "None",
+        5 to "5 mins before",
+        10 to "10 mins before",
+        15 to "15 mins before",
+        30 to "30 mins before",
+        60 to "1 hr before",
+        120 to "2 hrs before"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Black)
+            .padding(22.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            ScreenHeader(
+                onBack = { navController.navigateUp() },
+                onCancel = {
+                    viewModel.finishRun()
+                    navController.navigate(Screen.TaskList.route)
+                }
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "When would you like your reminder?",
+                    style = MaterialTheme.typography.headlineLarge,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                Text(
+                    text = "Choose how early to be notified.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(40.dp))
+
+                // Vertical list of options
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    reminderOptions.forEach { (minutes, label) ->
+                        val isSelected = selectedReminder == minutes
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth(0.8f)
+                                .padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) Pink else Black
+                            ),
+                            border = BorderStroke(1.dp, if (isSelected) Pink else Lavender)
+                        ) {
+                            TextButton(
+                                onClick = { viewModel.updateSelectedReminder(minutes) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) Black else Lavender,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Button(
+                onClick = {
+                    viewModel.confirmReminder()
+                    navController.navigate(Screen.Confirm.route)
+                },
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .align(Alignment.CenterHorizontally),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Pink,
+                    contentColor = Black
+                ),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text(
+                    text = "Next",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            StepProgressIndicator(
+                currentStep = 3,
+                totalSteps = 4,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 16.dp)
@@ -673,6 +796,21 @@ fun ConfirmationScreen(
 ) {
     val currentRun = viewModel.currentRun
     val context = LocalContext.current
+
+    val reminderMessage = if (currentRun.reminderMinutes > 0) {
+        val reminderText = when (currentRun.reminderMinutes) {
+            5 -> "5 minutes"
+            10 -> "10 minutes"
+            15 -> "15 minutes"
+            30 -> "30 minutes"
+            60 -> "1 hour"
+            120 -> "2 hours"
+            else -> "${currentRun.reminderMinutes} minutes"
+        }
+        "You'll get a reminder $reminderText before and when it's time."
+    } else {
+        "You'll get a reminder when it's time."
+    }
 
     Box(
         modifier = Modifier
@@ -701,8 +839,10 @@ fun ConfirmationScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "You'll get a reminder when it's time.",
-                    style = MaterialTheme.typography.titleMedium
+                    text = reminderMessage,
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(20.dp))
                 Text(
@@ -714,6 +854,22 @@ fun ConfirmationScreen(
                         text = viewModel.formatDateTime(context, timestamp),
                         style = MaterialTheme.typography.titleMedium
                     )
+                    if (currentRun.reminderMinutes > 0) {
+                        val reminderText = when (currentRun.reminderMinutes) {
+                            5 -> "5 mins before"
+                            10 -> "10 mins before"
+                            15 -> "15 mins before"
+                            30 -> "30 mins before"
+                            60 -> "1 hr before"
+                            120 -> "2 hrs before"
+                            else -> "${currentRun.reminderMinutes} mins before"
+                        }
+                        Text(
+                            text = "Reminder $reminderText",
+                            style = MaterialTheme.typography.bodyMedium.copy(color = Lavender),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             }
 
@@ -741,7 +897,8 @@ fun ConfirmationScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             StepProgressIndicator(
-                currentStep = 3,
+                currentStep = 4,
+                totalSteps = 4,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 16.dp)

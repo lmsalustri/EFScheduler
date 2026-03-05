@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.text.format.DateFormat
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
@@ -22,13 +23,15 @@ import java.util.concurrent.TimeUnit
 
 data class Run(
     val taskName: String = "",
-    val startTimestamp: Long? = null
+    val startTimestamp: Long? = null,
+    val reminderMinutes: Int = 0
 )
 
 data class TaskItem(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val reminderMinutes: Int = 0
 )
 
 class SchedulerViewModel(
@@ -37,7 +40,6 @@ class SchedulerViewModel(
 
     private val repository = TaskRepository(application)
 
-    // Expose tasks as StateFlow (for Compose)
     private val _tasks = MutableStateFlow<List<TaskItem>?>(null)
     val tasks: StateFlow<List<TaskItem>?> = _tasks.asStateFlow()
 
@@ -53,6 +55,9 @@ class SchedulerViewModel(
     var selectedTimestamp by mutableStateOf<Long?>(null)
         private set
 
+    var selectedReminder by mutableIntStateOf(0)
+        private set
+
     var isListEditMode by mutableStateOf(false)
         private set
 
@@ -65,10 +70,7 @@ class SchedulerViewModel(
         get() = taskNameInput.trim().length >= 2
 
     init {
-        // Create notification channel
         NotificationHelper.createNotificationChannel(application)
-
-        // Collect tasks from repository
         viewModelScope.launch {
             repository.tasksFlow.collect { taskList ->
                 _tasks.value = taskList.sortedBy { it.timestamp }
@@ -84,6 +86,7 @@ class SchedulerViewModel(
         editingTaskId = task.id
         startEditing(task.name)
         selectedTimestamp = task.timestamp
+        selectedReminder = task.reminderMinutes
         isListEditMode = false
     }
 
@@ -98,7 +101,7 @@ class SchedulerViewModel(
                 taskToDelete = null
             }
         }
-        if (_tasks.value?.isEmpty() == true) {  // safe call
+        if (_tasks.value?.isEmpty() == true) {
             isListEditMode = false
         }
     }
@@ -117,6 +120,7 @@ class SchedulerViewModel(
         isEditing = false
         taskNameInput = ""
         selectedTimestamp = null
+        selectedReminder = 0
         currentRun = Run()
         isListEditMode = false
         editingTaskId = null
@@ -134,9 +138,13 @@ class SchedulerViewModel(
         selectedTimestamp = timestamp
     }
 
+    fun updateSelectedReminder(minutes: Int) {
+        selectedReminder = minutes
+    }
+
     fun confirmDateTime() {
         selectedTimestamp?.let {
-            currentRun = currentRun.copy(startTimestamp = it)
+            currentRun = currentRun.copy(startTimestamp = it, reminderMinutes = selectedReminder)
         }
     }
 
@@ -146,9 +154,9 @@ class SchedulerViewModel(
                 viewModelScope.launch {
                     val newTask = TaskItem(
                         name = currentRun.taskName,
-                        timestamp = timestamp
+                        timestamp = timestamp,
+                        reminderMinutes = currentRun.reminderMinutes
                     )
-                    // If editing, pass the old task id so its notification is canceled
                     repository.addTask(newTask, editingTaskId)
                     editingTaskId = null
                 }
@@ -161,6 +169,7 @@ class SchedulerViewModel(
         isEditing = false
         taskNameInput = ""
         selectedTimestamp = null
+        selectedReminder = 0
         editingTaskId = null
     }
 
@@ -204,5 +213,8 @@ class SchedulerViewModel(
             else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(timestamp))
         }
         return "$dayString at $timeString"
+    }
+    fun confirmReminder() {
+        currentRun = currentRun.copy(reminderMinutes = selectedReminder)
     }
 }

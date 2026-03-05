@@ -26,20 +26,24 @@ object NotificationHelper {
         manager.createNotificationChannel(channel)
     }
 
-    fun buildNotification(context: Context, taskName: String): Notification {
+    // Helper to create a consistent PendingIntent for opening the app
+    fun getPendingIntent(context: Context): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
-        val pendingIntent = PendingIntent.getActivity(
+        return PendingIntent.getActivity(
             context, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+    }
 
+    // Build a notification with custom title and text
+    fun buildNotification(context: Context, title: String, text: String): Notification {
         return NotificationCompat.Builder(context, CHANNEL_ID)
-            .setContentTitle("Time to start your task!")
-            .setContentText("\"$taskName\" is scheduled now.")
+            .setContentTitle(title)
+            .setContentText(text)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(getPendingIntent(context))
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
