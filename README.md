@@ -2,61 +2,45 @@
 
 EFScheduler is a local-first Android task and transition reminder app built with Kotlin and Jetpack Compose.
 
-The app is designed to help users schedule tasks and receive transition reminders without relying on cloud storage or server-based notifications. All schedule data is stored locally on the device.
+It helps users create tasks, schedule transition reminders, and receive local notifications without relying on cloud storage, accounts, or a remote server.
 
-## Current Status
+## Overview
 
-EFScheduler currently supports the core scheduling flow:
+EFScheduler is designed around a simple idea: reminders should work locally and privately.
 
-- Create tasks
-- Pick a future task time
-- Choose an early reminder when available
-- Save tasks locally
+The app stores schedule data on the device and uses Android's local notification and alarm systems to remind users when a task is starting. It is intended for task transitions, routines, and time-based support where reliable local reminders matter.
+
+## Features
+
+- Create scheduled tasks
+- Choose task date and time
+- Add an optional early reminder
 - Edit task name, time, and reminder
 - Delete tasks and cancel pending notifications
-- Receive before-reminders
-- Receive final task notifications
-- Automatically remove completed tasks after the final notification fires
-- Reschedule future notifications after device reboot
-- Export schedule data to a local JSON backup
-- Import schedule data from a local JSON backup
+- Receive local Android notifications
+- Automatically remove tasks after the final notification fires
+- Reschedule future reminders after device reboot
+- Export schedules to a local JSON backup
+- Import schedules from a local JSON backup
 - View notification and alarm permission status
-- Open permission settings from the app
+- Open required Android permission settings from the app
 
 ## Local-First Design
 
 EFScheduler does not use cloud storage.
 
-Task data is stored locally using Room. Import and export are provided for manual backup and restore.
+Task data is stored locally on the device using Room. Import and export are available for manual backup and restore.
 
 This means:
 
 - No cloud database
-- No server-side scheduling
 - No account required
+- No server-side scheduling
 - No internet connection required for saved Android reminders to fire
-
-## Android Scheduling
-
-EFScheduler uses Android's local scheduling system for reminders.
-
-Main components:
-
-- `AlarmManager` for exact scheduled reminders
-- `NotificationReceiver` for posting notifications
-- `BootReceiver` for rescheduling future tasks after reboot
-- `Room` for persistent local task storage
-
-When a task is saved, EFScheduler schedules:
-
-1. A final notification at the task start time
-2. An optional before-reminder if the selected reminder time is still in the future
-
-When the final notification fires, the task is removed from Room so completed tasks do not stay in the active task list.
 
 ## Permissions
 
-EFScheduler needs two main permissions for reliable reminders:
+EFScheduler uses two Android permissions for reliable reminders.
 
 ### Notifications
 
@@ -64,125 +48,57 @@ Required so the app can display reminders.
 
 ### Alarms & reminders
 
-Required so reminders can fire on time, even if the app is closed.
+Required so reminders can fire on time, even when the app is closed.
 
-If alarm permission is disabled, EFScheduler shows an in-app explanation dialog instead of immediately sending the user to Android settings. The user can choose to open settings or dismiss the prompt.
+If alarm permission is disabled, EFScheduler shows an in-app explanation before sending the user to Android settings. The About / Permissions screen also shows whether each permission is enabled or disabled.
 
-The About / Permissions screen also shows permission status:
+## How Scheduling Works
 
-- Enabled
-- Disabled
+EFScheduler uses Android local scheduling.
 
-Settings buttons are shown only when a permission is disabled.
+Core pieces:
+
+- `Room` stores task data locally.
+- `AlarmManager` schedules reminders.
+- `NotificationReceiver` posts notifications.
+- `BootReceiver` restores future reminders after reboot.
+
+When a task is saved, the app schedules a final notification at the task start time. If the user selected an early reminder and that reminder time is still valid, the app schedules that too.
+
+When the final notification fires, the task is removed from the active task list.
 
 ## Backup and Restore
 
-EFScheduler supports local JSON import/export.
+EFScheduler supports local JSON import and export.
 
-Export creates a local backup file such as:
+Export creates a backup file such as:
 
 ```text
 EFScheduler-backup.json
 ```
 
-The backup includes:
+Backups include task names, timestamps, reminder settings, and schema metadata.
 
-- Task ID
-- Task name
-- Task timestamp
-- Reminder minutes
-- Schema version
-- Export timestamp
+Import restores tasks into the local Room database and reschedules future notifications.
 
-Import restores tasks into Room and reschedules notifications.
+## Current Status
 
-## Validation Rules
-
-EFScheduler prevents common scheduling mistakes.
-
-### Task time validation
-
-Tasks must be scheduled at least one minute in the future.
-
-If the selected time is too soon, the app shows:
-
-```text
-Choose a time at least 1 minute from now.
-```
-
-The Next button stays disabled until the selected time is valid.
-
-### Reminder validation
-
-Before-reminders are only shown if they would still occur in the future.
-
-For example:
-
-- If a task is 3 minutes away, early reminders are not shown.
-- If a task is 10 minutes away, 5 minutes before may be shown.
-- If a task is 2 hours away, all reminder options may be shown.
-
-If no early reminder is possible, the app displays:
-
-```text
-No early reminder available
-This task is too soon for an early reminder.
-```
-
-The user can still continue with a start-time notification.
-
-## Confirmed Working
-
-The following behaviors have been tested successfully:
+The current MVP has been tested for:
 
 - Task creation
 - Task editing
 - Task deletion
-- Before-reminder notifications
+- Early reminders
 - Final task notifications
-- Task auto-removal after final notification
+- Automatic task removal after final notification
 - Notification cancellation after delete
-- Notification update after edit
-- Reboot rescheduling through `BootReceiver`
-- Import/export
-- Permission status display
-- Alarm permission prompt dialog
+- Notification updates after edit
+- Reboot recovery through `BootReceiver`
+- Import and export
+- Permission status indicators
+- Alarm permission prompt flow
 
-## Known Development Notes
-
-### Emulator performance
-
-The Android emulator may show skipped frame warnings or slow UI behavior. This is expected during development and does not necessarily indicate a scheduling failure.
-
-Common harmless logs include:
-
-```text
-Skipped frames
-Davey!
-ashmem Pinning is deprecated
-Autofill popup isn't shown
-```
-
-The important failures to watch for are:
-
-```text
-FATAL EXCEPTION
-SecurityException
-SQLiteException
-IllegalStateException
-```
-
-### Compose prefetch workaround
-
-The app currently disables pausable composition in LazyColumn prefetch as a temporary workaround for a Compose crash:
-
-```kotlin
-ComposeFoundationFlags.isPausableCompositionInPrefetchEnabled = false
-```
-
-This should be revisited later as Compose versions update.
-
-## Important Log Tags
+## Development Notes
 
 Useful Logcat tags during testing:
 
@@ -193,131 +109,57 @@ EFSchedulerNotif
 MainActivity
 ```
 
-These help confirm:
+The Android emulator may show skipped frame warnings, autofill messages, or graphics-related logs during development. These are usually emulator noise unless paired with a crash or exception.
 
-- Tasks are saved to Room
-- Tasks are deleted from Room
-- Notifications are scheduled
-- Notifications are cancelled
-- BootReceiver runs after reboot
-- NotificationReceiver fires at the correct time
+The app currently includes a temporary Compose workaround for a LazyColumn prefetch crash:
 
-## Recommended Test Checklist
+```kotlin
+ComposeFoundationFlags.isPausableCompositionInPrefetchEnabled = false
+```
 
-Before sharing a build, run this checklist:
+This should be revisited as Compose updates.
 
-### Basic task flow
+## Build and Run
 
-- Create a task 10 minutes in the future
-- Choose 5 minutes before
-- Save task
-- Confirm before-reminder fires
-- Confirm final notification fires
-- Confirm task disappears after final notification
+Open the project in Android Studio and run it on an Android emulator or physical Android device.
 
-### Edit flow
-
-- Create a task
-- Edit task name
-- Edit task time
-- Edit reminder
-- Confirm only the edited notification fires
-
-### Delete flow
-
-- Create a task
-- Delete it before the reminder fires
-- Confirm no reminder or final notification appears
-
-### Reboot flow
-
-- Create a future task
-- Reboot the device with `adb reboot`
-- Confirm `BootReceiver` logs appear
-- Confirm the notification still fires
-
-### Import/export flow
-
-- Create a task
-- Export schedule
-- Delete task
-- Import schedule
-- Confirm task appears again
-- Confirm notification still fires
-
-### Permission flow
-
-- Disable notification permission
-- Confirm About / Permissions shows Disabled
-- Disable alarm permission
-- Confirm app shows the alarm permission dialog on launch
-- Confirm review screen warns that reminders may not work
-- Re-enable permissions
-- Confirm status returns to Enabled
-
-## Reboot Testing
-
-To reboot an emulator or connected Android device from Android Studio terminal:
+For reboot testing with ADB:
 
 ```bash
 adb reboot
 ```
 
-If multiple devices are connected:
+If multiple devices are attached:
 
 ```bash
 adb devices
 adb -s <device_id> reboot
 ```
 
-Example:
+## Recommended Manual Test Pass
 
-```bash
-adb -s emulator-5554 reboot
-```
+Before sharing a build, test:
 
-After reboot, search Logcat for:
-
-```text
-EFSchedulerBoot
-```
+1. Create a task with an early reminder.
+2. Confirm the early reminder fires.
+3. Confirm the final notification fires.
+4. Confirm the task disappears after the final notification.
+5. Edit a task and confirm only the edited notification fires.
+6. Delete a task and confirm no notification fires.
+7. Reboot with a future task scheduled and confirm it still fires.
+8. Export, delete, import, and confirm the restored task works.
+9. Disable permissions and confirm the app warns the user clearly.
 
 ## Project Direction
 
-EFScheduler is currently Android-first.
+EFScheduler is Android-first.
 
 The Android version can remain fully local because Android supports local storage, exact alarms, local notification receivers, and reboot receivers.
 
-An iPhone PWA would not be equivalent because reliable web push notifications usually require a network/server-based push flow. A future iPhone version should ideally be a native iOS app so it can preserve the same local-first design.
-
-## Future Improvements
-
-Potential next improvements:
-
-- Debug-only logging
-- Better release logging cleanup
-- Real-device battery saver testing
-- More polished empty state
-- Optional completed task history
-- Optional JSON import conflict handling
-- Native iOS version later
-- Accessibility review for font size and contrast
-- Small beta test with 1 to 2 Android users
-
-## Build Notes
-
-This project is built with:
-
-- Kotlin
-- Jetpack Compose
-- Room
-- AlarmManager
-- BroadcastReceiver
-- Material 3
-- Local JSON import/export
+A future iPhone version should ideally be native iOS rather than a cloud-based workaround, so the app can preserve the same local-first privacy model.
 
 ## Privacy
 
-EFScheduler is designed to keep schedule data on the user's device.
+EFScheduler keeps schedule data on the user's device.
 
-Schedule data is not cloud synced. The only time data leaves the app is when the user manually exports a JSON backup file.
+Data is not cloud synced. The only time schedule data leaves the app is when the user manually exports a backup file.
