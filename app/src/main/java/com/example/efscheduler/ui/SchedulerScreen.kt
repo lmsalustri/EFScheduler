@@ -1,6 +1,11 @@
 package com.example.efscheduler.ui
 
 import android.app.Application
+import android.content.Intent
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,12 +33,16 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -47,6 +56,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -81,6 +93,11 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.Calendar
+import androidx.compose.runtime.DisposableEffect
+import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 // ==================== Navigation Routes ====================
 sealed class Screen(val route: String) {
@@ -93,14 +110,16 @@ sealed class Screen(val route: String) {
     }
     object Reminder : Screen("reminder")
     object Confirm : Screen("confirm")
+
+    object AboutPermissions : Screen("aboutPermissions")
 }
 
 // ==================== Common Header ====================
 @Composable
 fun ScreenHeader(
+    modifier: Modifier = Modifier,
     onBack: () -> Unit,
-    onCancel: () -> Unit,
-    modifier: Modifier = Modifier
+    onCancel: (() -> Unit)? = null
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -120,14 +139,18 @@ fun ScreenHeader(
             Text("Back", style = MaterialTheme.typography.headlineSmall)
         }
 
-        Button(
-            onClick = onCancel,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Pink,
-                contentColor = Black
-            )
-        ) {
-            Text("Cancel", style = MaterialTheme.typography.bodyLarge)
+        if (onCancel != null) {
+            Button(
+                onClick = onCancel,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Pink,
+                    contentColor = Black
+                )
+            ) {
+                Text("Cancel", style = MaterialTheme.typography.bodyLarge)
+            }
+        } else {
+            Spacer(modifier = Modifier.width(1.dp))
         }
     }
 }
@@ -205,6 +228,9 @@ fun SchedulerApp() {
         composable(Screen.Confirm.route) {
             ConfirmationScreen(navController, viewModel)
         }
+        composable(Screen.AboutPermissions.route) {
+            AboutPermissionsScreen(navController, viewModel)
+        }
     }
 }
 
@@ -220,6 +246,40 @@ fun TaskListScreen(
     val isListEditMode by viewModel::isListEditMode
     val taskToDelete by viewModel::taskToDelete
 
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportTasksToUri(context, uri) { success, errorMessage ->
+                Toast.makeText(
+                    context,
+                    if (success) "Schedule exported" else errorMessage ?: "Export failed",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importTasksFromUri(
+                context = context,
+                uri = uri,
+                replaceExisting = false
+            ) { success, errorMessage ->
+                Toast.makeText(
+                    context,
+                    if (success) "Schedule imported" else errorMessage ?: "Import failed",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -234,6 +294,70 @@ fun TaskListScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Box {
+                IconButton(
+                    onClick = { menuExpanded = true }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Menu",
+                        tint = Lavender
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    containerColor = Black
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = "Export schedule",
+                                color = TextLight
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            exportLauncher.launch("EFScheduler-backup.json")
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = "Import schedule",
+                                color = TextLight
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = "About / Permissions",
+                                color = TextLight
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = Lavender
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            navController.navigate(Screen.AboutPermissions.route)
+                        }
+                    )
+                }
+            }
+
             if (tasks != null && tasks!!.isNotEmpty()) {
                 OutlinedButton(
                     onClick = { viewModel.toggleListEditMode() },
@@ -618,10 +742,24 @@ fun PickTimeScreen(
 
                 if (viewModel.selectedTimestamp != null) {
                     val formatted = viewModel.formatDateTime(context, viewModel.selectedTimestamp!!)
+
                     Text(
                         text = "Selected: $formatted",
                         style = MaterialTheme.typography.titleLarge
                     )
+
+                    viewModel.selectedTimestampWarning?.let { warning ->
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = warning,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = Pink,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 } else {
                     Text(
                         text = "No date selected",
@@ -632,11 +770,12 @@ fun PickTimeScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            val isNextEnabled = viewModel.selectedTimestamp != null
+            val isNextEnabled = viewModel.isSelectedTimestampValid
             Button(
                 onClick = {
-                    viewModel.confirmDateTime()
-                    navController.navigate(Screen.Reminder.route)
+                    if (viewModel.confirmDateTime()) {
+                        navController.navigate(Screen.Reminder.route)
+                    }
                 },
                 enabled = isNextEnabled,
                 modifier = Modifier
@@ -679,15 +818,7 @@ fun ReminderScreen(
     val selectedReminder by viewModel::selectedReminder
 
     // Reminder options with display text
-    val reminderOptions = listOf(
-        0 to "None",
-        5 to "5 mins before",
-        10 to "10 mins before",
-        15 to "15 mins before",
-        30 to "30 mins before",
-        60 to "1 hr before",
-        120 to "2 hrs before"
-    )
+    val reminderOptions = viewModel.availableReminderOptions
 
     Box(
         modifier = Modifier
@@ -710,15 +841,29 @@ fun ReminderScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
             ) {
+                val beforeReminderOptions = reminderOptions.filter { it.first > 0 }
+                val hasBeforeReminderOptions = beforeReminderOptions.isNotEmpty()
+
                 Text(
-                    text = "When would you like your reminder?",
+                    text = if (hasBeforeReminderOptions) {
+                        "When would you like your reminder?"
+                    } else {
+                        "No early reminder available"
+                    },
                     style = MaterialTheme.typography.headlineLarge,
                     textAlign = TextAlign.Center
                 )
+
                 Spacer(modifier = Modifier.height(20.dp))
+
                 Text(
-                    text = "Choose how early to be notified.",
-                    style = MaterialTheme.typography.bodyMedium
+                    text = if (hasBeforeReminderOptions) {
+                        "Choose how early to be notified."
+                    } else {
+                        "This task is too soon for an early reminder."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(40.dp))
 
@@ -727,26 +872,47 @@ fun ReminderScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    reminderOptions.forEach { (minutes, label) ->
-                        val isSelected = selectedReminder == minutes
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth(0.8f)
-                                .padding(vertical = 4.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) Pink else Black
-                            ),
-                            border = BorderStroke(1.dp, if (isSelected) Pink else Lavender)
-                        ) {
-                            TextButton(
-                                onClick = { viewModel.updateSelectedReminder(minutes) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = label,
-                                    color = if (isSelected) Black else Lavender,
-                                    style = MaterialTheme.typography.bodyLarge
+                    if (beforeReminderOptions.isEmpty()) {
+                        Spacer(modifier = Modifier.height(1.dp))
+                    } else {
+                        reminderOptions.forEach { (minutes, label) ->
+                            val isSelected = selectedReminder == minutes
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.8f)
+                                    .padding(vertical = 4.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isSelected) {
+                                        TextLight.copy(alpha = 0.12f)
+                                    } else {
+                                        Black
+                                    }
+                                ),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSelected) Pink else Lavender
                                 )
+                            ) {
+                                TextButton(
+                                    onClick = { viewModel.updateSelectedReminder(minutes) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            color = if (isSelected) Pink else Lavender,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.SemiBold,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -755,23 +921,29 @@ fun ReminderScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
+            val isNextEnabled = viewModel.isSelectedReminderValid
             Button(
                 onClick = {
-                    viewModel.confirmReminder()
-                    navController.navigate(Screen.Confirm.route)
+                    if (viewModel.confirmReminder()) {
+                        navController.navigate(Screen.Confirm.route)
+                    }
                 },
+                enabled = isNextEnabled,
                 modifier = Modifier
                     .fillMaxWidth(0.85f)
                     .align(Alignment.CenterHorizontally),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Pink,
-                    contentColor = Black
+                    containerColor = if (isNextEnabled) Pink else DisabledGrey,
+                    contentColor = if (isNextEnabled) Black else DisabledText
                 ),
                 shape = MaterialTheme.shapes.medium
             ) {
                 Text(
                     text = "Next",
-                    style = MaterialTheme.typography.bodyLarge
+                    style = if (isNextEnabled)
+                        MaterialTheme.typography.bodyLarge
+                    else
+                        MaterialTheme.typography.bodyLarge.copy(color = DisabledText)
                 )
             }
 
@@ -796,6 +968,9 @@ fun ConfirmationScreen(
 ) {
     val currentRun = viewModel.currentRun
     val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        viewModel.refreshPermissionStatus(context)
+    }
 
     val reminderMessage = if (currentRun.reminderMinutes > 0) {
         val reminderText = when (currentRun.reminderMinutes) {
@@ -807,9 +982,9 @@ fun ConfirmationScreen(
             120 -> "2 hours"
             else -> "${currentRun.reminderMinutes} minutes"
         }
-        "You'll get a reminder $reminderText before and when it's time."
+        "Notifications: $reminderText before and when the task starts"
     } else {
-        "You'll get a reminder when it's time."
+        "Notification: when the task starts"
     }
 
     Box(
@@ -834,7 +1009,7 @@ fun ConfirmationScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "Scheduled!",
+                    text = if (viewModel.isEditing) "Review changes" else "Review task",
                     style = MaterialTheme.typography.headlineLarge,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -875,6 +1050,31 @@ fun ConfirmationScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
+            val permissionWarning = viewModel.reminderPermissionWarning
+
+            if (permissionWarning != null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .align(Alignment.CenterHorizontally)
+                        .padding(bottom = 12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Pink.copy(alpha = 0.18f)
+                    ),
+                    border = BorderStroke(1.dp, Pink)
+                ) {
+                    Text(
+                        text = permissionWarning,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = TextLight,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
             Button(
                 onClick = {
                     viewModel.addCurrentRunToTasks()
@@ -889,7 +1089,7 @@ fun ConfirmationScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Pink, contentColor = Black)
             ) {
                 Text(
-                    text = "Back to task list",
+                    text = if (viewModel.isEditing) "Save changes" else "Save task",
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
@@ -905,4 +1105,265 @@ fun ConfirmationScreen(
             )
         }
     }
+}
+
+@Composable
+fun PermissionCard(
+    title: String,
+    description: String,
+    statusText: String,
+    statusGood: Boolean,
+    buttonText: String,
+    showButton: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = TextLight.copy(alpha = 0.1f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = TextLight,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+
+                PermissionStatusBadge(
+                    text = statusText,
+                    isGood = statusGood
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextLight
+            )
+
+            if (showButton) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Button(
+                    onClick = onClick,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Pink,
+                        contentColor = Black
+                    ),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text(
+                        text = buttonText,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            color = Black,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PermissionStatusBadge(
+    text: String,
+    isGood: Boolean
+) {
+    val green = androidx.compose.ui.graphics.Color(0xFF4CAF50)
+    val red = androidx.compose.ui.graphics.Color(0xFFE57373)
+
+    val badgeColor = if (isGood) green else red
+
+    Box(
+        modifier = Modifier
+            .border(
+                width = 1.dp,
+                color = badgeColor,
+                shape = RoundedCornerShape(50)
+            )
+            .background(
+                color = badgeColor.copy(alpha = 0.18f),
+                shape = RoundedCornerShape(50)
+            )
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = badgeColor,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+fun AboutPermissionsScreen(
+    navController: NavController,
+    viewModel: SchedulerViewModel
+) {
+    val context = LocalContext.current
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val notificationsEnabled by viewModel::notificationsEnabled
+    val exactAlarmsEnabled by viewModel::exactAlarmsEnabled
+
+    DisposableEffect(lifecycleOwner) {
+        viewModel.refreshPermissionStatus(context)
+
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshPermissionStatus(context)
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Black)
+            .padding(22.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            ScreenHeader(
+                onBack = { navController.navigateUp() },
+                onCancel = null
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Text(
+                text = "About EFScheduler",
+                style = MaterialTheme.typography.headlineLarge,
+                color = TextLight
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "EFScheduler helps you schedule tasks and transition reminders. Your schedule is stored locally on this device. Import and export are used for manual backup and restore.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextLight
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Text(
+                text = "Permissions",
+                style = MaterialTheme.typography.headlineMedium,
+                color = TextLight
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            PermissionCard(
+                title = "Notifications",
+                description = "Allows EFScheduler to show reminders when it is time to transition.",
+                statusText = if (notificationsEnabled) "Enabled" else "Disabled",
+                statusGood = notificationsEnabled,
+                buttonText = "Open notification settings",
+                showButton = !notificationsEnabled,
+                onClick = {
+                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    }
+                    context.startActivity(intent)
+                }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PermissionCard(
+                title = "Alarms & reminders",
+                description = "Allows EFScheduler to schedule reminders reliably, even when the app is closed.",
+                statusText = if (exactAlarmsEnabled) "Enabled" else "Disabled",
+                statusGood = exactAlarmsEnabled,
+                buttonText = "Open alarm settings",
+                showButton = !exactAlarmsEnabled,
+                onClick = {
+                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                        data = "package:$context.packageName".toUri()
+                    }
+                    context.startActivity(intent)
+                }
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Text(
+                text = "Data storage",
+                style = MaterialTheme.typography.headlineMedium,
+                color = TextLight
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Your schedule is not cloud synced. It stays on your device unless you choose to export it.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextLight
+            )
+        }
+    }
+}
+
+@Composable
+fun ExactAlarmPermissionDialog(
+    onOpenSettings: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Enable alarms & reminders",
+                color = Lavender
+            )
+        },
+        text = {
+            Text(
+                text = "EFScheduler needs this permission so you'll get your reminders on time, even when the app is closed.",
+                color = TextLight
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onOpenSettings) {
+                Text(
+                    text = "Open settings",
+                    color = Pink
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Not now",
+                    color = Lavender
+                )
+            }
+        },
+        containerColor = Black,
+        tonalElevation = 0.dp
+    )
 }

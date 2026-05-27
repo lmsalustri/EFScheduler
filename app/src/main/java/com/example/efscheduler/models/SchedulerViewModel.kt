@@ -1,12 +1,17 @@
 package com.example.efscheduler.models
 
+import android.Manifest
+import android.app.AlarmManager
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.text.format.DateFormat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.efscheduler.models.notification.NotificationHelper
@@ -14,6 +19,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -68,6 +75,92 @@ class SchedulerViewModel(
 
     val isNextEnabled: Boolean
         get() = taskNameInput.trim().length >= 2
+
+    var notificationsEnabled by mutableStateOf(false)
+        private set
+
+    var exactAlarmsEnabled by mutableStateOf(false)
+        private set
+
+    val reminderPermissionWarning: String?
+        get() {
+            return when {
+                !notificationsEnabled && !exactAlarmsEnabled ->
+                    "Reminders may not work until notifications and alarms are enabled."
+
+                !notificationsEnabled ->
+                    "Reminders may not appear until notifications are enabled."
+
+                !exactAlarmsEnabled ->
+                    "Reminders may not fire on time until alarms are enabled."
+
+                else -> null
+            }
+        }
+
+    private val minimumAllowedTimestamp: Long
+        get() {
+            val calendar = Calendar.getInstance()
+
+            calendar.add(Calendar.MINUTE, 1)
+            calendar.set(Calendar.SECOND, 0)
+            calendar.set(Calendar.MILLISECOND, 0)
+
+            return calendar.timeInMillis
+        }
+
+    val isSelectedTimestampValid: Boolean
+        get() = selectedTimestamp?.let { it >= minimumAllowedTimestamp } == true
+
+    val selectedTimestampWarning: String?
+        get() {
+            val timestamp = selectedTimestamp ?: return null
+
+            return if (timestamp < minimumAllowedTimestamp) {
+                "Choose a time at least 1 minute from now."
+            } else {
+                null
+            }
+        }
+
+    val availableReminderOptions: List<Pair<Int, String>>
+        get() {
+            val taskTime = selectedTimestamp ?: return listOf(0 to "None")
+
+            val options = listOf(
+                0 to "None",
+                5 to "5 mins before",
+                10 to "10 mins before",
+                15 to "15 mins before",
+                30 to "30 mins before",
+                60 to "1 hr before",
+                120 to "2 hrs before"
+            )
+
+            val now = System.currentTimeMillis()
+
+            return options.filter { (minutes, _) ->
+                minutes == 0 || taskTime - (minutes * 60_000L) > now
+            }
+        }
+
+    val selectedReminderWarning: String?
+        get() {
+            val taskTime = selectedTimestamp ?: return null
+
+            if (selectedReminder <= 0) return null
+
+            val reminderTime = taskTime - (selectedReminder * 60_000L)
+
+            return if (reminderTime <= System.currentTimeMillis()) {
+                "Choose a reminder that is still in the future."
+            } else {
+                null
+            }
+        }
+
+    val isSelectedReminderValid: Boolean
+        get() = selectedReminderWarning == null
 
     init {
         NotificationHelper.createNotificationChannel(application)
@@ -139,25 +232,49 @@ class SchedulerViewModel(
     }
 
     fun updateSelectedReminder(minutes: Int) {
-        selectedReminder = minutes
+        val taskTime = selectedTimestamp
+
+        if (taskTime == null || minutes == 0) {
+            selectedReminder = minutes
+            return
+        }
+
+        val reminderTime = taskTime - (minutes * 60_000L)
+
+        if (reminderTime > System.currentTimeMillis()) {
+            selectedReminder = minutes
+        }
     }
 
-    fun confirmDateTime() {
-        selectedTimestamp?.let {
-            currentRun = currentRun.copy(startTimestamp = it, reminderMinutes = selectedReminder)
+    fun confirmDateTime(): Boolean {
+        val timestamp = selectedTimestamp ?: return false
+
+        if (timestamp < minimumAllowedTimestamp) {
+            return false
         }
+
+        currentRun = currentRun.copy(
+            startTimestamp = timestamp,
+            reminderMinutes = selectedReminder
+        )
+
+        return true
     }
 
     fun addCurrentRunToTasks() {
         currentRun.startTimestamp?.let { timestamp ->
             if (currentRun.taskName.isNotBlank()) {
                 viewModelScope.launch {
-                    val newTask = TaskItem(
+                    val taskId = editingTaskId ?: UUID.randomUUID().toString()
+
+                    val task = TaskItem(
+                        id = taskId,
                         name = currentRun.taskName,
                         timestamp = timestamp,
                         reminderMinutes = currentRun.reminderMinutes
                     )
-                    repository.addTask(newTask, editingTaskId)
+
+                    repository.addTask(task, editingTaskId)
                     editingTaskId = null
                 }
             }
@@ -214,7 +331,75 @@ class SchedulerViewModel(
         }
         return "$dayString at $timeString"
     }
-    fun confirmReminder() {
+    fun confirmReminder(): Boolean {
+        if (!isSelectedReminderValid) {
+            return false
+        }
+
         currentRun = currentRun.copy(reminderMinutes = selectedReminder)
+        return true
+    }
+
+    fun exportTasksToUri(
+        context: Context,
+        uri: Uri,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val json = repository.exportTasksToJson()
+
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(json.toByteArray())
+                } ?: throw IllegalStateException("Could not open export file")
+
+                onComplete(true, null)
+            } catch (e: Exception) {
+                onComplete(false, e.message ?: "Export failed")
+            }
+        }
+    }
+
+    fun importTasksFromUri(
+        context: Context,
+        uri: Uri,
+        replaceExisting: Boolean = false,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val json = context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    BufferedReader(InputStreamReader(inputStream)).use { reader ->
+                        reader.readText()
+                    }
+                } ?: throw IllegalStateException("Could not open import file")
+
+                repository.importTasksFromJson(
+                    json = json,
+                    replaceExisting = replaceExisting
+                )
+
+                onComplete(true, null)
+            } catch (e: Exception) {
+                onComplete(false, e.message ?: "Import failed")
+            }
+        }
+    }
+
+    fun refreshPermissionStatus(context: Context) {
+        notificationsEnabled = isNotificationPermissionGranted(context)
+        exactAlarmsEnabled = canScheduleExactAlarms(context)
+    }
+
+    private fun isNotificationPermissionGranted(context: Context): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun canScheduleExactAlarms(context: Context): Boolean {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        return alarmManager.canScheduleExactAlarms()
     }
 }
