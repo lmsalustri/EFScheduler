@@ -31,7 +31,6 @@ Task data is stored locally using Room. Import and export are provided for manua
 
 This means:
 
-- No Firebase
 - No cloud database
 - No server-side scheduling
 - No account required
