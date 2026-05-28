@@ -1,104 +1,36 @@
 # EFScheduler
 
-EFScheduler is a local-first Android task and transition reminder app built with Kotlin and Jetpack Compose.
+EFScheduler is a local-first Android app for task transitions and reminders, designed through a participatory process with neurodivergent users.
 
-It helps users create tasks, schedule transition reminders, and receive local notifications without relying on cloud storage, accounts, or a remote server.
+Unlike many productivity apps, EFScheduler is not built around accounts, calendars, cloud sync, or productivity tracking. It is built around transition support: helping users move from one task to another with clear timing, simple choices, and reliable local notifications.
 
-## Overview
+## Design approach
 
-EFScheduler is designed around a simple idea: reminders should work locally and privately.
+Neurodivergent users were directly involved in shaping the app before and during development. The result is a transition-support tool built from their expressed needs and preferences, not a generic scheduling app with accessibility added later.
 
-The app stores schedule data on the device and uses Android's local notification and alarm systems to remind users when a task is starting. It is intended for task transitions, routines, and time-based support where reliable local reminders matter.
+## Core features
 
-## Features
+EFScheduler supports creating, editing, deleting, importing, and exporting scheduled tasks. It sends local Android notifications for task start times and optional early reminders. Completed tasks are removed from the active task list after the final notification fires.
 
-- Create scheduled tasks
-- Choose task date and time
-- Add an optional early reminder
-- Edit task name, time, and reminder
-- Delete tasks and cancel pending notifications
-- Receive local Android notifications
-- Automatically remove tasks after the final notification fires
-- Reschedule future reminders after device reboot
-- Export schedules to a local JSON backup
-- Import schedules from a local JSON backup
-- View notification and alarm permission status
-- Open required Android permission settings from the app
+The app also restores future reminders after device reboot.
 
-## Local-First Design
+## Local-first model
 
-EFScheduler does not use cloud storage.
+EFScheduler stores tasks locally using Room and schedules reminders using Android’s local alarm and notification systems.
 
-Task data is stored locally on the device using Room. Import and export are available for manual backup and restore.
-
-This means:
-
-- No cloud database
-- No account required
-- No server-side scheduling
-- No internet connection required for saved Android reminders to fire
+It does not use cloud storage, user accounts, server-side scheduling, Firebase, or network-based reminders. Manual JSON export and import are available for backup and restore.
 
 ## Permissions
 
-EFScheduler uses two Android permissions for reliable reminders.
+EFScheduler uses notification permission so reminders can appear, and alarms/reminders permission so reminders can fire on time.
 
-### Notifications
+If alarm permission is disabled, the app explains why it is needed before sending the user to Android settings. The About / Permissions screen shows whether permissions are enabled or disabled.
 
-Required so the app can display reminders.
+## Technical notes
 
-### Alarms & reminders
+The Android app uses Kotlin, Jetpack Compose, Room, AlarmManager, BroadcastReceiver, and local JSON import/export.
 
-Required so reminders can fire on time, even when the app is closed.
-
-If alarm permission is disabled, EFScheduler shows an in-app explanation before sending the user to Android settings. The About / Permissions screen also shows whether each permission is enabled or disabled.
-
-## How Scheduling Works
-
-EFScheduler uses Android local scheduling.
-
-Core pieces:
-
-- `Room` stores task data locally.
-- `AlarmManager` schedules reminders.
-- `NotificationReceiver` posts notifications.
-- `BootReceiver` restores future reminders after reboot.
-
-When a task is saved, the app schedules a final notification at the task start time. If the user selected an early reminder and that reminder time is still valid, the app schedules that too.
-
-When the final notification fires, the task is removed from the active task list.
-
-## Backup and Restore
-
-EFScheduler supports local JSON import and export.
-
-Export creates a backup file such as:
-
-```text
-EFScheduler-backup.json
-```
-
-Backups include task names, timestamps, reminder settings, and schema metadata.
-
-Import restores tasks into the local Room database and reschedules future notifications.
-
-## Current Status
-
-The current MVP has been tested for:
-
-- Task creation
-- Task editing
-- Task deletion
-- Early reminders
-- Final task notifications
-- Automatic task removal after final notification
-- Notification cancellation after delete
-- Notification updates after edit
-- Reboot recovery through `BootReceiver`
-- Import and export
-- Permission status indicators
-- Alarm permission prompt flow
-
-## Development Notes
+Important reminder components include `NotificationReceiver` for posting reminders and `BootReceiver` for restoring future reminders after reboot.
 
 Useful Logcat tags during testing:
 
@@ -109,57 +41,31 @@ EFSchedulerNotif
 MainActivity
 ```
 
-The Android emulator may show skipped frame warnings, autofill messages, or graphics-related logs during development. These are usually emulator noise unless paired with a crash or exception.
-
 The app currently includes a temporary Compose workaround for a LazyColumn prefetch crash:
 
 ```kotlin
 ComposeFoundationFlags.isPausableCompositionInPrefetchEnabled = false
 ```
 
-This should be revisited as Compose updates.
+This should be revisited after future Compose updates.
 
-## Build and Run
+## Running the app
 
-Open the project in Android Studio and run it on an Android emulator or physical Android device.
+Open the project in Android Studio and run it on an Android emulator or Android device.
 
-For reboot testing with ADB:
+For reboot testing:
 
 ```bash
 adb reboot
 ```
 
-If multiple devices are attached:
+If multiple devices are connected:
 
 ```bash
 adb devices
 adb -s <device_id> reboot
 ```
 
-## Recommended Manual Test Pass
-
-Before sharing a build, test:
-
-1. Create a task with an early reminder.
-2. Confirm the early reminder fires.
-3. Confirm the final notification fires.
-4. Confirm the task disappears after the final notification.
-5. Edit a task and confirm only the edited notification fires.
-6. Delete a task and confirm no notification fires.
-7. Reboot with a future task scheduled and confirm it still fires.
-8. Export, delete, import, and confirm the restored task works.
-9. Disable permissions and confirm the app warns the user clearly.
-
-## Project Direction
-
-EFScheduler is Android-first.
-
-The Android version can remain fully local because Android supports local storage, exact alarms, local notification receivers, and reboot receivers.
-
-A future iPhone version should ideally be native iOS rather than a cloud-based workaround, so the app can preserve the same local-first privacy model.
-
 ## Privacy
 
-EFScheduler keeps schedule data on the user's device.
-
-Data is not cloud synced. The only time schedule data leaves the app is when the user manually exports a backup file.
+EFScheduler keeps schedule data on the device. Data only leaves the app when the user manually exports a backup file.
