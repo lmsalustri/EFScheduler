@@ -51,7 +51,7 @@ This should be revisited after future Compose updates.
 
 ## Running the app
 
-Open the project in Android Studio and run it on an Android emulator or Android device.
+Open the project in Android Studio and run it on an emulator or Android device.
 
 For reboot testing:
 
